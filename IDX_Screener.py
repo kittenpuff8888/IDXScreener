@@ -610,7 +610,7 @@ def normalize_history(hist):
     hist.dropna(subset=["Close"], inplace=True)
     if hist.empty:
         return None
-    idx = pd.to_datetime(hist.index)
+    idx = safe_parse_datetime_index(hist.index)
     try:
         if getattr(idx, "tz", None) is not None:
             idx = idx.tz_localize(None)
@@ -2596,9 +2596,9 @@ def compute_market_structure_v1(hist: pd.DataFrame, swing_size: int = MS_SWING_S
     if not isinstance(h.index, pd.DatetimeIndex):
         try:
             if "Date" in h.columns:
-                h.index = pd.to_datetime(h["Date"])
+                h.index = safe_parse_datetime_index(h["Date"])
             else:
-                h.index = pd.to_datetime(h.index)
+                h.index = safe_parse_datetime_index(h.index)
         except Exception:
             return out
 
@@ -3070,7 +3070,7 @@ def divergence_signals(hist: pd.DataFrame, rsi_series: pd.Series, lookback=75, s
     if not isinstance(df.index, pd.DatetimeIndex):
         try:
             if "Date" in df.columns:
-                df.index = pd.to_datetime(df["Date"])
+                df.index = safe_parse_datetime_index(df["Date"])
         except Exception:
             pass
 
@@ -3090,7 +3090,7 @@ def divergence_signals(hist: pd.DataFrame, rsi_series: pd.Series, lookback=75, s
             return df.index[idx_pos].strftime("%d %b '%y")
         except Exception:
             try:
-                return pd.to_datetime(df.index[idx_pos]).strftime("%d %b '%y")
+                return safe_parse_datetime(df.index[idx_pos]).strftime("%d %b '%y")
             except Exception:
                 return ""
 
@@ -3592,6 +3592,7 @@ def base_row_from_ksei(ksei_row: pd.Series):
         "idx_sector_weight": safe_num(ksei_row.get("idx_sector_weight")),
         "sector": ksei_row.get("Sector", ""),
         "industry": ksei_row.get("Industry", ""),
+        "shares_outstanding": safe_num(ksei_row.get("Shares Outstanding")),
         "mcap": np.nan,
         "market_cap_category": "N/A",
         "liquidity_category": "N/A",
@@ -3764,6 +3765,7 @@ def build_row(ksei_row: pd.Series, hist: pd.DataFrame, shares_fallback: float):
 
     shares_ksei = safe_num(ksei_row.get("Shares Outstanding"))
     shares_used = shares_ksei if pd.notna(shares_ksei) and shares_ksei > 0 else shares_fallback
+    row["shares_outstanding"] = shares_used if pd.notna(shares_used) and shares_used > 0 else np.nan
     row["mcap"] = row["close"] * shares_used if pd.notna(row["close"]) and pd.notna(shares_used) and shares_used > 0 else np.nan
 
     # FULL mode
@@ -6239,7 +6241,7 @@ def build_true_idx_sector_movers_sheet(wb, latest_market_day, all_market_rows):
             return None
         s = pd.to_numeric(hist["Close"], errors="coerce").dropna()
         if s.empty: return None
-        s.index = pd.to_datetime(s.index)
+        s.index = safe_parse_datetime_index(s.index)
         return s.resample("W-FRI").last().dropna()
 
     def _sector_proxy(rows, sector_name):
@@ -6273,7 +6275,7 @@ def build_true_idx_sector_movers_sheet(wb, latest_market_day, all_market_rows):
         return idx.dropna(), len(members)
 
     def _bench():
-        end = pd.Timestamp(latest_market_day)
+        end = safe_parse_datetime(latest_market_day)
         start = end - pd.Timedelta(weeks=140)
         try:
             raw = yf.download("^JKSE",
@@ -6284,7 +6286,7 @@ def build_true_idx_sector_movers_sheet(wb, latest_market_day, all_market_rows):
             hh = normalize_history(raw) if "normalize_history" in globals() else raw
             if hh is None or hh.empty: return None
             s = pd.to_numeric(hh["Close"], errors="coerce").dropna()
-            s.index = pd.to_datetime(s.index)
+            s.index = safe_parse_datetime_index(s.index)
             return s[s.index <= end].resample("W-FRI").last().dropna()
         except Exception:
             return None
@@ -6333,7 +6335,7 @@ def build_true_idx_sector_movers_sheet(wb, latest_market_day, all_market_rows):
                 return None
             # Clip to MARKET_DATE — same boundary as all other data
             asof = get_market_date()
-            s.index = pd.to_datetime(s.index).tz_localize(None) if s.index.tz is not None else pd.to_datetime(s.index)
+            s.index = safe_parse_datetime_index(s.index).tz_localize(None) if s.index.tz is not None else safe_parse_datetime_index(s.index)
             s = s[s.index.normalize() <= asof]
             return float(s.iloc[-1]) if not s.empty else None
         except Exception:
@@ -8526,6 +8528,23 @@ FUNDAMENTAL_DETAIL_SCHEMA = [
         ("yf_market_cap",         "Market Cap",         14, "compact", "center"),
         ("yf_enterprise_value",   "Enterprise Value",   16, "compact", "center"),
         ("yf_ipo_date",           "IPO Date",           14, None,      "center"),
+    ]),
+    ("Ownership", FILL_GROUP_OWNER, [
+        ("ownership_type", "Ownership Type", 18, None, "center"),
+        ("investors",      "Investors",      16, None, "center"),
+        ("free_float",     "Free Float %",   14, "0.00", "center"),
+        ("holder",         "Holder",         12, "#,##0", "center"),
+        ("hhi",            "Classic HHI",    14, "#,##0", "center"),
+        ("cr1",            "CR1",            12, "0.00", "center"),
+        ("cr3",            "CR3",            12, "0.00", "center"),
+        ("ccs",            "CCS",            12, "0.00", "center"),
+        ("ccs_category",   "CCS Category",   18, None, "center"),
+    ]),
+    ("Market Risk", FILL_GROUP_MP, [
+        ("beta_ihsg",      "Beta vs IHSG",   14, "0.00", "center"),
+        ("beta_ihsg_zone", "Beta Zone",      16, None, "center"),
+        ("rs_rating",      "RS Rating",      12, "#,##0", "center"),
+        ("rs_rating_zone", "RS Rating Zone", 18, None, "center"),
     ]),
     ("Valuation", FILL_GROUP_VAL, [
         ("yf_pe_ratio",        "P/E Ratio",         12, "0.00",   "center"),

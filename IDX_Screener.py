@@ -13,7 +13,6 @@ import yfinance as yf
 # Set the market date for this screener run.
 # All data is clipped to this date — acts as the effective "as of" date.
 MARKET_DATE = os.environ.get("MARKET_DATE", datetime.now().strftime("%Y-%m-%d"))
-
 # =========================
 # BACKTEST MODE CONFIG
 # =========================
@@ -164,6 +163,31 @@ def safe_int(v, default=0):
         return int(round(float(v)))
     except Exception:
         return default
+
+def safe_parse_datetime(value, errors="coerce", dayfirst=False):
+    """Parse scalar date values without pandas' ambiguous-format warning."""
+    if value in (None, "", "N/A", "-"):
+        return pd.NaT
+    try:
+        return pd.to_datetime(value, errors=errors, format="mixed", dayfirst=dayfirst)
+    except TypeError:
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d %b %Y", "%d %B %Y"):
+            try:
+                return pd.to_datetime(value, errors=errors, format=fmt)
+            except Exception:
+                pass
+        return pd.to_datetime(value, errors=errors, dayfirst=dayfirst)
+
+def safe_parse_datetime_index(values, errors="coerce", dayfirst=False):
+    """Parse date-like indexes without pandas' ambiguous-format warning."""
+    try:
+        return pd.to_datetime(values, errors=errors, format="mixed", dayfirst=dayfirst)
+    except TypeError:
+        parsed = [
+            safe_parse_datetime(v, errors=errors, dayfirst=dayfirst)
+            for v in list(values)
+        ]
+        return pd.DatetimeIndex(parsed)
 
 def pct_diff(close, ma):
     if pd.isna(close) or pd.isna(ma) or ma == 0:
@@ -565,7 +589,7 @@ def _ordinal(n: int) -> str:
 def _build_output_filename(run_dt: datetime, latest_market_day: str) -> str:
     ts_run = run_dt.strftime("%y%m%d %H.%M")
     try:
-        d = pd.to_datetime(latest_market_day, errors="coerce")
+        d = safe_parse_datetime(latest_market_day, errors="coerce")
         if pd.notna(d):
             asof_label = f"{d.strftime('%B')} {_ordinal(int(d.day))} {d.year}"
         else:
@@ -5563,7 +5587,7 @@ def build_detail_sheet(ws, latest_market_day, rows):
                             pass
                         else:
                             if isinstance(value, str):
-                                parsed = pd.to_datetime(value, errors="coerce")
+                                parsed = safe_parse_datetime(value, errors="coerce")
                                 if pd.notna(parsed):
                                     cell.value = parsed.to_pydatetime()
                             elif hasattr(value, "to_pydatetime"):
@@ -5576,7 +5600,7 @@ def build_detail_sheet(ws, latest_market_day, rows):
                 elif fmt == "wyckoff_date":
                     try:
                         if isinstance(value, str):
-                            parsed = pd.to_datetime(value, errors="coerce")
+                            parsed = safe_parse_datetime(value, errors="coerce")
                             if pd.notna(parsed):
                                 cell.value = parsed.to_pydatetime()
                         elif hasattr(value, "to_pydatetime"):
@@ -7918,8 +7942,11 @@ def _fetch_fundamental_data(ticker: str) -> dict:
         if _ipo_raw:
             try:
                 import datetime as _dt
-                _ipo_date = _dt.datetime.utcfromtimestamp(
-                    float(_ipo_raw) / (1000 if float(_ipo_raw) > 1e10 else 1)
+                _ipo_ts = float(_ipo_raw) / (1000 if float(_ipo_raw) > 1e10 else 1)
+                _utc = getattr(_dt, "UTC", _dt.timezone.utc)
+                _ipo_date = _dt.datetime.fromtimestamp(
+                    _ipo_ts,
+                    _utc
                 ).strftime("%Y-%m-%d")
             except Exception:
                 _ipo_date = "N/A"
@@ -8170,15 +8197,20 @@ def _fetch_dividend_history(ticker: str) -> dict:
         return empty
 
 
-def _fetch_idx_disclosure(ticker: str) -> dict:
+def _fetch_google_rss_disclosure(ticker: str, company_name: str = "") -> dict:
     """
-    Fetch latest Keterbukaan Informasi disclosure from IDX.
-    Scrapes https://www.idx.co.id/id/perusahaan-tercatat/keterbukaan-informasi/
+    Fetch the latest corporate-event headline from Google News RSS.
+    The result is market-date aware: prefer the newest item on/before MARKET_DATE,
+    then fall back to the newest available item when no as-of item exists.
     Returns: date, title, url, category, sentiment, days_since, event_risk.
     """
-    import urllib.request
+    import html
     import re
-    from datetime import date
+    import urllib.parse
+    import urllib.request
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+    from email.utils import parsedate_to_datetime
 
     empty = {
         "disclosure_date": "N/A", "disclosure_title": "N/A",
@@ -8187,111 +8219,149 @@ def _fetch_idx_disclosure(ticker: str) -> dict:
         "event_risk": "N/A",
     }
 
-    KEYWORD_CATEGORY = {
+    keyword_category = {
         "rights issue": ("Dilution", "Bearish", "High"),
         "penawaran umum terbatas": ("Dilution", "Bearish", "High"),
+        "private placement": ("Dilution", "Bearish", "High"),
         "hmetd": ("Dilution", "Bearish", "High"),
-        "akuisisi": ("Expansion", "Neutral", "Medium"),
-        "acquisition": ("Expansion", "Neutral", "Medium"),
-        "dividen": ("Shareholder Return", "Bullish", "Low"),
-        "dividend": ("Shareholder Return", "Bullish", "Low"),
-        "pemecahan saham": ("Liquidity Positive", "Bullish", "Low"),
-        "stock split": ("Liquidity Positive", "Bullish", "Low"),
-        "restrukturisasi": ("Transitional", "Neutral", "Medium"),
-        "restructuring": ("Transitional", "Neutral", "Medium"),
+        "saham baru": ("Dilution", "Bearish", "High"),
+        "suspensi": ("Distress", "Bearish", "High"),
         "pailit": ("Distress", "Bearish", "High"),
         "bankruptcy": ("Distress", "Bearish", "High"),
+        "gagal bayar": ("Distress", "Bearish", "High"),
+        "utang": ("Leverage", "Neutral", "Medium"),
+        "obligasi": ("Debt Financing", "Neutral", "Medium"),
+        "restrukturisasi": ("Transitional", "Neutral", "Medium"),
+        "restructuring": ("Transitional", "Neutral", "Medium"),
+        "akuisisi": ("Expansion", "Neutral", "Medium"),
+        "acquisition": ("Expansion", "Neutral", "Medium"),
+        "merger": ("Corporate Action", "Neutral", "Medium"),
         "penawaran tender": ("Corporate Action", "Neutral", "Medium"),
         "tender offer": ("Corporate Action", "Neutral", "Medium"),
+        "rups": ("Shareholder Meeting", "Neutral", "Medium"),
+        "rapat umum pemegang saham": ("Shareholder Meeting", "Neutral", "Medium"),
+        "laporan keuangan": ("Earnings", "Neutral", "Medium"),
+        "laba": ("Earnings", "Bullish", "Medium"),
+        "rugi": ("Earnings", "Bearish", "Medium"),
+        "dividen": ("Shareholder Return", "Bullish", "Low"),
+        "dividend": ("Shareholder Return", "Bullish", "Low"),
+        "buyback": ("Shareholder Return", "Bullish", "Low"),
+        "pembelian kembali saham": ("Shareholder Return", "Bullish", "Low"),
+        "pemecahan saham": ("Liquidity Positive", "Bullish", "Low"),
+        "stock split": ("Liquidity Positive", "Bullish", "Low"),
     }
 
-    try:
-        # IDX Keterbukaan Informasi — search title for [TICKER] pattern
-        clean = ticker.upper().replace(".JK", "").strip()
-        url = "https://www.idx.co.id/id/perusahaan-tercatat/keterbukaan-informasi/"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
+    def _market_asof_or_none():
+        raw = globals().get("MARKET_DATE", None)
+        if raw in (None, "", "None", "none", "N/A", "-"):
+            return None
+        try:
+            ts = pd.Timestamp(raw)
+            if pd.isna(ts):
+                return None
+            return ts.normalize()
+        except Exception:
+            return None
 
-        # Find rows whose title contains [TICKER ] or [TICKER]
-        ticker_pattern = re.compile(
-            rf'\[{re.escape(clean)}\s*\]',
-            re.IGNORECASE
-        )
+    def _clean_google_title(title):
+        title = html.unescape(str(title or "")).strip()
+        return re.sub(r"\s+-\s+[^-]{2,80}$", "", title).strip() or title
 
-        # Extract all disclosure rows: date + title + url
-        row_pattern = re.compile(
-            r'(\d{2}\s+\w+\s+\d{4}\s+\d{2}:\d{2}:\d{2})\s+(.*?)\s*(?:href="([^"]+)")?',
-            re.DOTALL
-        )
+    def _parse_pubdate(raw):
+        try:
+            dt = parsedate_to_datetime(str(raw or ""))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+            return pd.Timestamp(dt).normalize()
+        except Exception:
+            return pd.NaT
 
-        # Simpler extraction: find any line containing [TICKER]
-        lines = html.split("\n")
-        disc_date_str = "N/A"
-        disc_title    = "N/A"
-        disc_url      = "N/A"
-
-        for i, line in enumerate(lines):
-            if ticker_pattern.search(line):
-                # Try to extract date from nearby lines
-                context = " ".join(lines[max(0,i-3):i+3])
-                date_m = re.search(r'(\d{2}\s+\w{3}\w*\s+\d{4}\s+\d{2}:\d{2}:\d{2})', context)
-                if date_m:
-                    disc_date_str = date_m.group(1).strip()
-                # Extract title — take the line containing the ticker
-                title_clean = re.sub(r'<[^>]+>', '', line).strip()
-                if len(title_clean) > 10:
-                    disc_title = title_clean[:150]
-                # Extract URL if present
-                url_m = re.search(r'href="([^"]+keterbukaan[^"]*)"', context, re.IGNORECASE)
-                if url_m:
-                    disc_url = url_m.group(1)
-                    if not disc_url.startswith("http"):
-                        disc_url = "https://www.idx.co.id" + disc_url
-                # Format: "DD Mon YYYY HH:MM:SS Title [TICKER ]"
-                if disc_title == "N/A":
-                    disc_title = f"{disc_date_str} {title_clean}"[:150]
-                break
-
-        # Parse date
-        disc_date = None
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                disc_date = pd.Timestamp(disc_date_str, dayfirst=True).date()
-                break
-            except Exception:
-                pass
-        if disc_date is None:
-            disc_date_str = "N/A"
-            days_since = np.nan
-        else:
-            days_since = (date.today() - disc_date).days
-            disc_date_str = disc_date.strftime("%Y-%m-%d")
-
-        # Classify
-        title_lower = disc_title.lower()
-        category = sentiment = risk = "N/A"
-        for kw, (cat, sent, ev_risk) in KEYWORD_CATEGORY.items():
+    def _classify(title):
+        title_lower = str(title or "").lower()
+        for kw, (cat, sent, ev_risk) in keyword_category.items():
             if kw in title_lower:
-                category, sentiment, risk = cat, sent, ev_risk
-                break
-        if category == "N/A":
-            category, sentiment, risk = "General", "Neutral", "Low"
+                return cat, sent, ev_risk
+        return "Google News", "Neutral", "Low"
 
-        if not disc_url.startswith("http"):
-            disc_url = "https://www.idx.co.id" + disc_url
+    try:
+        clean = ticker.upper().replace(".JK", "").strip()
+        company = re.sub(r"\s+", " ", str(company_name or "")).strip()
+        company_query = f' OR "{company}"' if company and company.upper() != clean else ""
+        query = (
+            f'("{clean}" OR "{clean}.JK"{company_query}) '
+            f'(saham OR emiten OR IDX OR BEI OR "Bursa Efek Indonesia")'
+        )
+        params = urllib.parse.urlencode({
+            "q": query,
+            "hl": "id",
+            "gl": "ID",
+            "ceid": "ID:id",
+        })
+        feed_url = f"https://news.google.com/rss/search?{params}"
+        req = urllib.request.Request(feed_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            xml_bytes = resp.read()
+
+        root = ET.fromstring(xml_bytes)
+        items = []
+        for item in root.findall(".//item"):
+            title_raw = item.findtext("title") or ""
+            link = html.unescape(item.findtext("link") or feed_url).strip()
+            pub_ts = _parse_pubdate(item.findtext("pubDate"))
+            source = item.findtext("source") or "Google News"
+            title = _clean_google_title(title_raw)
+            if pd.isna(pub_ts) or not title:
+                continue
+            searchable = f"{title} {source}".upper()
+            if clean not in searchable and company:
+                company_tokens = [
+                    w.upper()
+                    for w in re.findall(r"[A-Za-z0-9]+", company)
+                    if len(w) >= 4
+                ]
+                if not any(tok in searchable for tok in company_tokens[:4]):
+                    continue
+            items.append({
+                "title": title,
+                "url": link,
+                "date": pub_ts,
+                "source": source,
+            })
+
+        if not items:
+            return empty
+
+        items.sort(key=lambda x: x["date"], reverse=True)
+        asof = _market_asof_or_none()
+        if asof is not None:
+            asof_items = [x for x in items if x["date"] <= asof]
+            selected = asof_items[0] if asof_items else items[0]
+            days_base = asof.date()
+        else:
+            selected = items[0]
+            days_base = datetime.now().date()
+
+        category, sentiment, risk = _classify(selected["title"])
+        pub_date = selected["date"].date()
 
         return {
-            "disclosure_date": disc_date_str,
-            "disclosure_title": disc_title[:120],
-            "disclosure_url": disc_url,
+            "disclosure_date": pub_date.strftime("%Y-%m-%d"),
+            "disclosure_title": selected["title"][:160],
+            "disclosure_url": selected["url"],
             "disclosure_category": category,
             "disclosure_sentiment": sentiment,
-            "days_since_disclosure": days_since,
+            "days_since_disclosure": (days_base - pub_date).days,
             "event_risk": risk,
         }
     except Exception:
         return empty
+
+
+def _fetch_idx_disclosure(ticker: str) -> dict:
+    """
+    Backward-compatible wrapper. Disclosure data now comes from Google News RSS.
+    """
+    return _fetch_google_rss_disclosure(ticker)
 
 
 def _compute_pbv_bands(ticker: str, years: int = 3) -> dict:
@@ -8328,7 +8398,7 @@ def _compute_pbv_bands(ticker: str, years: int = 3) -> dict:
         if hasattr(price_hist, "columns"):
             price_hist = price_hist.iloc[:, 0]
         price_hist = price_hist.dropna()
-        price_hist.index = pd.to_datetime(price_hist.index, errors="coerce", utc=False).normalize()
+        price_hist.index = safe_parse_datetime_index(price_hist.index, errors="coerce").normalize()
 
         # ── 2. Quarterly balance sheet — equity + shares ───────────────────────
         bs = tk.quarterly_balance_sheet
@@ -8339,7 +8409,7 @@ def _compute_pbv_bands(ticker: str, years: int = 3) -> dict:
         # yfinance quarterly_balance_sheet: columns = report dates, rows = fields
         if isinstance(bs.columns[0], str):
             bs = bs.T   # flip if dates are in rows
-        bs.index = pd.to_datetime(bs.index, errors="coerce", utc=False).normalize()
+        bs.index = safe_parse_datetime_index(bs.index, errors="coerce").normalize()
         bs = bs.sort_index()
 
         # Equity field — try multiple yfinance key names
@@ -8661,8 +8731,11 @@ def _build_fundamental_row(screener_row: dict) -> dict:
     combined["yf_upcoming_pay_date"]  = div_hist.get("upcoming_pay_date", "N/A")
     combined["yf_upcoming_div_yield"] = div_hist.get("upcoming_div_yield", np.nan)
 
-    # IDX Keterbukaan Informasi disclosure (new)
-    disc = _fetch_idx_disclosure(ticker)
+    # Google News RSS corporate-event headline, selected relative to MARKET_DATE.
+    disc = _fetch_google_rss_disclosure(
+        ticker,
+        raw_fund.get("company_name", screener_row.get("emiten", "")),
+    )
     combined["yf_disclosure_date"]       = disc.get("disclosure_date", "N/A")
     combined["yf_disclosure_title"]      = disc.get("disclosure_title", "N/A")
     combined["yf_disclosure_url"]        = disc.get("disclosure_url", "N/A")
@@ -9118,7 +9191,7 @@ def build_fundamental_key_stats_sheet(wb, latest_market_day: str, rows: list):
         "Cash Flow":                     "TTM  ·  yfinance",
         "Dividend":                      "Latest & Upcoming  ·  yfinance",
         "PBV Band Analysis":             "5-Year Rolling  ·  Daily BVPS Forward-Filled  ·  yfinance",
-        "Disclosure & Corporate Events": "Latest IDX Filing  ·  idx.co.id",
+        "Disclosure & Corporate Events": "Google RSS News  ·  news.google.com",
     }
 
     # ── Group header row (row 5) ──────────────────────────────────────────────
@@ -9653,13 +9726,13 @@ def build_guide_sheet(ws):
     _row("MACD Cross","Golden Cross / Dead Cross / -","Golden = MACD crosses above Signal line Dead = MACD crosses below Signal line","Golden Cross","Dead Cross")
 
     # ── DISCLOSURE & CORPORATE EVENTS ─────────────────────────────────────────
-    _group("10 · DISCLOSURE & CORPORATE EVENTS  (IDX Keterbukaan Informasi)")
-    _row("Latest Disclosure Date","Date of most recent IDX disclosure filing","Recency indicator; fresh disclosure = potential volatility","≤ 7 days (fresh catalyst)","Stale > 90 days")
-    _row("Latest Disclosure Title","Title text of IDX disclosure","Keywords reveal corporate action type","Dividend / Acquisition announcement","Rights Issue / Bankruptcy / Restructuring")
-    _row("Latest Disclosure URL","Hyperlink to IDX.co.id disclosure page","Direct access to full corporate document","","")
+    _group("10 · DISCLOSURE & CORPORATE EVENTS  (Google News RSS)")
+    _row("Latest Disclosure Date","Date of most recent Google News headline selected by MARKET_DATE","Recency indicator; fresh corporate headline = potential volatility","≤ 7 days (fresh catalyst)","Stale > 90 days")
+    _row("Latest Disclosure Title","Headline text from Google News RSS","Keywords reveal corporate action type","Dividend / Acquisition announcement","Rights Issue / Bankruptcy / Restructuring")
+    _row("Latest Disclosure URL","Hyperlink to Google News RSS item","Direct access to the source headline","","")
     _row("Disclosure Category","Dilution / Expansion / Shareholder Return / Liquidity Positive / Transitional / Distress / Corporate Action / General","Keyword-classified corporate action type","Shareholder Return / Liquidity Positive","Dilution / Distress")
     _row("Disclosure Sentiment","Bullish / Neutral / Bearish","Sentiment impact from disclosure keyword mapping","Bullish","Bearish")
-    _row("Days Since Disclosure","Today − Latest Disclosure Date","Age of most recent disclosure","< 14 days","")
+    _row("Days Since Disclosure","MARKET_DATE − Latest Disclosure Date; latest item used if MARKET_DATE has no match","Age of most recent disclosure","< 14 days","")
     _row("Event Risk","High / Medium / Low","Rights Issue / Bankruptcy = High Acquisition / Restructuring = Medium Dividend / Stock Split = Low","Low","High")
 
     # ── DIVIDEND FRAMEWORK ────────────────────────────────────────────────────

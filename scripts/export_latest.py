@@ -148,6 +148,11 @@ def export_workbook(workbook_path: Path) -> Path:
     partial_count = clean_value(find_stat(processing, "Partial Data"))
     no_data_count = clean_value(find_stat(processing, "No Data"))
 
+    screener = parse_idx_screener(wb["IDX Screener"])
+    technical = parse_table(wb["IDX Technical Detail"], header_row=6, data_start=7)
+    fundamental = parse_table(wb["IDX Fundamental Detail"], header_row=6, data_start=7)
+    processing_rows = parse_table(wb["Data Processing Results"], header_row=14, data_start=15)
+
     payload = {
         "date": market_date,
         "runTime": run_time,
@@ -158,10 +163,16 @@ def export_workbook(workbook_path: Path) -> Path:
             "partial": partial_count,
             "noData": no_data_count,
         },
-        "screener": parse_idx_screener(wb["IDX Screener"]),
-        "technical": parse_table(wb["IDX Technical Detail"], header_row=6, data_start=7),
-        "fundamental": parse_table(wb["IDX Fundamental Detail"], header_row=6, data_start=7),
-        "processing": parse_table(wb["Data Processing Results"], header_row=14, data_start=15),
+        "columns": {
+            "screener": SCREENER_COLUMNS,
+            "technical": list(technical[0].keys()) if technical else [],
+            "fundamental": list(fundamental[0].keys()) if fundamental else [],
+            "processing": list(processing_rows[0].keys()) if processing_rows else [],
+        },
+        "screener": screener,
+        "technical": technical,
+        "fundamental": fundamental,
+        "processing": processing_rows,
     }
 
     data_path = DATA_DIR / f"{market_date}.json"

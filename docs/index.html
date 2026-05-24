@@ -7,48 +7,66 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <h1>IDX Screener</h1>
-          <p id="runMeta">Loading market data...</p>
+    <div class="app">
+      <aside class="sidebar" aria-label="Dashboard navigation">
+        <div class="brand">
+          <span class="brandmark">ID</span>
+          <div>
+            <strong>IDX Flow</strong>
+            <small>VWAP Screener</small>
+          </div>
         </div>
-        <div class="actions">
-          <label>
-            <span>Date</span>
-            <select id="dateSelect"></select>
-          </label>
-          <a id="downloadLink" class="button" href="#" aria-disabled="true">Workbook</a>
-        </div>
-      </header>
-
-      <section class="metrics" aria-label="Run summary">
-        <div><span>Total</span><strong id="metricTotal">-</strong></div>
-        <div><span>OK</span><strong id="metricOk">-</strong></div>
-        <div><span>Partial</span><strong id="metricPartial">-</strong></div>
-        <div><span>No Data</span><strong id="metricNoData">-</strong></div>
-      </section>
-
-      <section class="controls" aria-label="Table controls">
-        <input id="searchInput" type="search" placeholder="Search ticker, sector, setup..." />
-        <div class="segmented" role="tablist" aria-label="Dataset">
+        <nav class="nav" role="tablist" aria-label="Dataset">
           <button class="tab active" data-tab="screener" type="button">Screener</button>
-          <button class="tab" data-tab="technical" type="button">Technical</button>
-          <button class="tab" data-tab="fundamental" type="button">Fundamental</button>
+          <button class="tab" data-tab="technical" type="button">Technical Detail</button>
+          <button class="tab" data-tab="fundamental" type="button">Fundamental Detail</button>
           <button class="tab" data-tab="processing" type="button">Processing</button>
-        </div>
-      </section>
+        </nav>
+      </aside>
 
-      <section id="filterBar" class="filterbar" aria-label="Screener filters"></section>
+      <main class="shell">
+        <header class="topbar">
+          <div>
+            <h1>Dashboard</h1>
+            <p id="runMeta">Loading market data...</p>
+          </div>
+          <div class="actions">
+            <label>
+              <span>Date</span>
+              <select id="dateSelect"></select>
+            </label>
+            <a id="downloadLink" class="button" href="#" aria-disabled="true">Workbook</a>
+          </div>
+        </header>
 
-      <section class="tablewrap" aria-live="polite">
-        <table>
-          <thead id="tableHead"></thead>
-          <tbody id="tableBody"></tbody>
-        </table>
-        <div id="emptyState" class="empty" hidden>No rows for this view.</div>
-      </section>
-    </main>
+        <section class="metrics" aria-label="Run summary">
+          <div><span>Total Tickers</span><strong id="metricTotal">-</strong></div>
+          <div><span>Full Data</span><strong id="metricOk">-</strong></div>
+          <div><span>Partial</span><strong id="metricPartial">-</strong></div>
+          <div><span>No Data</span><strong id="metricNoData">-</strong></div>
+        </section>
+
+        <section class="panel">
+          <div class="toolbar" aria-label="Table controls">
+            <div>
+              <h2 id="viewTitle">Screener</h2>
+              <p id="viewMeta">-</p>
+            </div>
+            <input id="searchInput" type="search" placeholder="Search ticker, sector, setup..." />
+          </div>
+
+          <section id="filterBar" class="filterbar" aria-label="Screener filters"></section>
+
+          <section class="tablewrap" aria-live="polite">
+            <table>
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+            <div id="emptyState" class="empty" hidden>No rows for this view.</div>
+          </section>
+        </section>
+      </main>
+    </div>
 
     <script src="app.js"></script>
   </body>

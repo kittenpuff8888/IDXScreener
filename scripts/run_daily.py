@@ -19,6 +19,13 @@ def main() -> None:
     env = os.environ.copy()
     env["MARKET_DATE"] = market_date
 
+    local_sync = ROOT / "scripts" / "sync_local_source.py"
+    if not os.environ.get("GITHUB_ACTIONS") and os.environ.get("SKIP_LOCAL_SYNC") != "1":
+        try:
+            subprocess.run([sys.executable, str(local_sync)], cwd=ROOT, check=True)
+        except Exception as exc:
+            print(f"[WARN] Local VWAP source sync skipped: {exc}")
+
     subprocess.run([sys.executable, str(ROOT / "IDX_Screener.py")], cwd=ROOT, env=env, check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts" / "export_latest.py")], cwd=ROOT, check=True)
 

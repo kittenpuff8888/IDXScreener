@@ -8,23 +8,6 @@ const state = {
   sortDir: 1,
 };
 
-const columns = {
-  screener: [
-    "Filter", "Ticker", "Sector", "Price", "Chg %", "RVOL", "ADR & ATR (14)", "Zone",
-    "MP Profile", "MA Position", "POI", "Anchor", "Entry", "Target", "Upside %", "Invalidation", "R/R"
-  ],
-  technical: [
-    "Ticker", "Closing Price", "Price Change %", "RS Rating", "IDX Sector", "Sector", "Industry",
-    "Market Cap", "Liquidity Category", "RVOL 20D", "ADR %", "ATR (14) %", "MA Zone",
-    "RSI 14", "MACD Cross", "Current QVWAP Zone", "Previous QVWAP Zone", "Previous Year VWAP Zone"
-  ],
-  fundamental: [
-    "Ticker", "Price", "Price Change %", "IDX Sector", "Market Cap", "P/E Ratio", "P/B Ratio",
-    "Dividend Yield", "Profit Margin", "ROE", "ROA", "Revenue Growth", "Earnings Growth"
-  ],
-  processing: ["Ticker", "Status", "Bars", "Retry Count", "Source Used", "Latest Market Day", "Reason"],
-};
-
 const numericNames = new Set([
   "Price", "Chg %", "RVOL", "Target", "Upside %", "Invalidation", "Closing Price", "Price Change %",
   "RS Rating", "RVOL 20D", "ADR %", "ATR (14) %", "RSI 14", "P/E Ratio", "P/B Ratio",
@@ -41,6 +24,8 @@ const els = {
   metricNoData: document.querySelector("#metricNoData"),
   searchInput: document.querySelector("#searchInput"),
   filterBar: document.querySelector("#filterBar"),
+  viewTitle: document.querySelector("#viewTitle"),
+  viewMeta: document.querySelector("#viewMeta"),
   tableHead: document.querySelector("#tableHead"),
   tableBody: document.querySelector("#tableBody"),
   emptyState: document.querySelector("#emptyState"),
@@ -61,6 +46,27 @@ function formatValue(key, value) {
   }
   if (Number.isInteger(value)) return value.toLocaleString("en-US");
   return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function getColumns(tab = state.tab) {
+  const exported = state.payload?.columns?.[tab];
+  if (exported?.length) return exported;
+  const rows = state.payload?.[tab] || [];
+  return rows[0] ? Object.keys(rows[0]).filter((key) => key !== "Section") : [];
+}
+
+function isNumericColumn(key, rows) {
+  if (numericNames.has(key)) return true;
+  return rows.some((row) => typeof row[key] === "number");
+}
+
+function titleForTab(tab) {
+  return {
+    screener: "IDX Screener",
+    technical: "IDX Technical Detail",
+    fundamental: "IDX Fundamental Detail",
+    processing: "Data Processing Results",
+  }[tab] || tab;
 }
 
 function activeRows() {
@@ -110,17 +116,20 @@ function renderFilterBar() {
 }
 
 function renderTable() {
-  const visibleColumns = columns[state.tab];
   const rows = activeRows();
+  const visibleColumns = getColumns();
+
+  els.viewTitle.textContent = titleForTab(state.tab);
+  els.viewMeta.textContent = `${rows.length.toLocaleString("en-US")} rows / ${visibleColumns.length.toLocaleString("en-US")} columns`;
 
   els.tableHead.innerHTML = `<tr>${visibleColumns.map((key) => {
-    const mark = state.sortKey === key ? (state.sortDir === 1 ? " ▲" : " ▼") : "";
+    const mark = state.sortKey === key ? (state.sortDir === 1 ? " ^" : " v") : "";
     return `<th class="sortable" data-sort="${key}">${key}${mark}</th>`;
   }).join("")}</tr>`;
 
   els.tableBody.innerHTML = rows.map((row) => `<tr>${visibleColumns.map((key) => {
     const value = row[key];
-    const numeric = numericNames.has(key);
+    const numeric = isNumericColumn(key, rows);
     const classes = [
       numeric ? "numeric" : "",
       key === "Ticker" ? "ticker" : "",
@@ -130,12 +139,12 @@ function renderTable() {
     return `<td class="${classes}">${formatValue(key, value)}</td>`;
   }).join("")}</tr>`).join("");
 
-  els.emptyState.hidden = rows.length > 0;
+  els.emptyState.toggleAttribute("hidden", rows.length > 0);
 }
 
 function render() {
   if (!state.payload) return;
-  els.runMeta.textContent = `Market data as of ${state.payload.date} · Run ${state.payload.runTime || "-"}`;
+  els.runMeta.textContent = `Market data as of ${state.payload.date} / Run ${state.payload.runTime || "-"}`;
   els.downloadLink.href = state.payload.workbook || "#";
   els.downloadLink.setAttribute("aria-disabled", state.payload.workbook ? "false" : "true");
   renderMetrics();
@@ -174,6 +183,8 @@ document.querySelectorAll(".tab").forEach((button) => {
     state.tab = button.dataset.tab;
     state.filter = "ALL";
     state.sortKey = null;
+    state.search = "";
+    els.searchInput.value = "";
     render();
   });
 });

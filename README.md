@@ -18,3 +18,20 @@ Static GitHub Pages website for the IDX VWAP screener.
 5. Open the `Actions` tab and run `IDX Screener Pages` manually once.
 
 The scheduled run uses `10:00 UTC`, which is `17:00 WIB`.
+
+## Updating From Your Local VWAP Screener Folder
+
+When you change this file:
+
+`C:\Users\azhar\OneDrive\Documents\VWAP Screener\IDX_Screener.py`
+
+run:
+
+```powershell
+python scripts/sync_local_source.py
+git add IDX_Screener.py Raw
+git commit -m "Sync latest IDX screener script"
+git push
+```
+
+The sync keeps the website copy automation-friendly by preserving the `MARKET_DATE` environment setting. GitHub Actions cannot read your OneDrive folder directly, so the updated copy must be pushed to GitHub.

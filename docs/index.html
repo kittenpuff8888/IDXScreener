@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IDX Screener</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>IDX Screener</h1>
+          <p id="runMeta">Loading market data...</p>
+        </div>
+        <div class="actions">
+          <label>
+            <span>Date</span>
+            <select id="dateSelect"></select>
+          </label>
+          <a id="downloadLink" class="button" href="#" aria-disabled="true">Workbook</a>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="Run summary">
+        <div><span>Total</span><strong id="metricTotal">-</strong></div>
+        <div><span>OK</span><strong id="metricOk">-</strong></div>
+        <div><span>Partial</span><strong id="metricPartial">-</strong></div>
+        <div><span>No Data</span><strong id="metricNoData">-</strong></div>
+      </section>
+
+      <section class="controls" aria-label="Table controls">
+        <input id="searchInput" type="search" placeholder="Search ticker, sector, setup..." />
+        <div class="segmented" role="tablist" aria-label="Dataset">
+          <button class="tab active" data-tab="screener" type="button">Screener</button>
+          <button class="tab" data-tab="technical" type="button">Technical</button>
+          <button class="tab" data-tab="fundamental" type="button">Fundamental</button>
+          <button class="tab" data-tab="processing" type="button">Processing</button>
+        </div>
+      </section>
+
+      <section id="filterBar" class="filterbar" aria-label="Screener filters"></section>
+
+      <section class="tablewrap" aria-live="polite">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty" hidden>No rows for this view.</div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

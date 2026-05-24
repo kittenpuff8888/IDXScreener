@@ -1,0 +1,12 @@
+{
+  "latest": "2026-05-13",
+  "dates": [
+    {
+      "date": "2026-05-13",
+      "runTime": "2026-05-24 08:57:36",
+      "rows": 51,
+      "file": "data/2026-05-13.json",
+      "workbook": "downloads/2026-05-13.xlsx"
+    }
+  ]
+}

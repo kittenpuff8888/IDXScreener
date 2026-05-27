@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def parse_date(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%d")
+
+
+def market_weekdays(end_date: datetime, days: int) -> list[str]:
+    dates: list[str] = []
+    cursor = end_date
+    while len(dates) < days:
+        if cursor.weekday() < 5:
+            dates.append(cursor.strftime("%Y-%m-%d"))
+        cursor -= timedelta(days=1)
+    return list(reversed(dates))
+
+
+def sync_local_source_once() -> None:
+    if os.environ.get("GITHUB_ACTIONS") or os.environ.get("SKIP_LOCAL_SYNC") == "1":
+        return
+    sync_script = ROOT / "scripts" / "sync_local_source.py"
+    try:
+        subprocess.run([sys.executable, str(sync_script)], cwd=ROOT, check=True)
+    except Exception as exc:
+        print(f"[WARN] Local VWAP source sync skipped: {exc}")
+
+
+def run_for_date(market_date: str) -> None:
+    env = os.environ.copy()
+    env["MARKET_DATE"] = market_date
+    print(f"\n=== Running IDX screener for {market_date} ===")
+    subprocess.run([sys.executable, str(ROOT / "IDX_Screener.py")], cwd=ROOT, env=env, check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "export_latest.py")], cwd=ROOT, check=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--date", help="Run one date, format YYYY-MM-DD")
+    parser.add_argument("--end-date", help="Last date for backfill, default today in WIB")
+    parser.add_argument("--days", type=int, default=1, help="Number of market weekdays to run")
+    args = parser.parse_args()
+
+    if args.days < 1:
+        raise ValueError("--days must be at least 1")
+
+    sync_local_source_once()
+
+    if args.date:
+        dates = [parse_date(args.date).strftime("%Y-%m-%d")]
+    else:
+        end_date = parse_date(args.end_date) if args.end_date else datetime.now(ZoneInfo("Asia/Jakarta"))
+        dates = market_weekdays(end_date, args.days)
+
+    for market_date in dates:
+        run_for_date(market_date)
+
+
+if __name__ == "__main__":
+    main()

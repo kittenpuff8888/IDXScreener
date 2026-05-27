@@ -22,6 +22,20 @@ def patch_market_date(script_path: Path) -> None:
         count=1,
         flags=re.MULTILINE,
     )
+    text = re.sub(
+        r"^BACKTEST_MODE\s*=\s*(True|False)\s*$",
+        "BACKTEST_MODE = False",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    text = re.sub(
+        r"^USE_CUSTOM_TICKERS_ONLY\s*=\s*(True|False)\s*$",
+        "USE_CUSTOM_TICKERS_ONLY = False",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
     script_path.write_text(text, encoding="utf-8")
 
 

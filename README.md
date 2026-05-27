@@ -35,3 +35,10 @@ git push
 ```
 
 The sync keeps the website copy automation-friendly by preserving the `MARKET_DATE` environment setting. GitHub Actions cannot read your OneDrive folder directly, so the updated copy must be pushed to GitHub.
+
+## Backfill And Daily Data
+
+- The scheduled workflow runs one market date each weekday, using the run date in WIB.
+- Manual `Run workflow` can backfill the last 7 market weekdays by leaving `market_date` empty.
+- To run only one date manually, fill `market_date` with `YYYY-MM-DD`.
+- The sync script forces `BACKTEST_MODE = False` and `USE_CUSTOM_TICKERS_ONLY = False`, so the GitHub run uses the full KSEI ticker universe.

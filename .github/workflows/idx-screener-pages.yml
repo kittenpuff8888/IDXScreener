@@ -6,8 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       market_date:
-        description: "Optional market date, format YYYY-MM-DD"
+        description: "Optional single market date, format YYYY-MM-DD. Leave blank to backfill."
         required: false
+        type: string
+      backfill_days:
+        description: "When market_date is blank, run the last N market weekdays."
+        required: false
+        default: "7"
         type: string
   schedule:
     # 17:00 WIB = 10:00 UTC. Weekdays only.
@@ -42,22 +47,34 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Resolve market date
+      - name: Resolve screener run arguments
         if: github.event_name != 'push'
-        id: market-date
+        id: screener-args
         shell: bash
         run: |
           if [ -n "${{ inputs.market_date }}" ]; then
-            echo "date=${{ inputs.market_date }}" >> "$GITHUB_OUTPUT"
+            if ! [[ "${{ inputs.market_date }}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+              echo "market_date must use YYYY-MM-DD"
+              exit 1
+            fi
+            echo "args=--date ${{ inputs.market_date }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "args=--days 1" >> "$GITHUB_OUTPUT"
           else
-            echo "date=$(TZ=Asia/Jakarta date +%F)" >> "$GITHUB_OUTPUT"
+            days="${{ inputs.backfill_days }}"
+            if [ -z "$days" ]; then
+              days="7"
+            fi
+            if ! [[ "$days" =~ ^[0-9]+$ ]]; then
+              echo "backfill_days must be a number"
+              exit 1
+            fi
+            echo "args=--days $days" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run screener and export site data
         if: github.event_name != 'push'
-        env:
-          MARKET_DATE: ${{ steps.market-date.outputs.date }}
-        run: python scripts/run_daily.py
+        run: python scripts/run_backfill.py ${{ steps.screener-args.outputs.args }}
 
       - name: Commit generated data
         if: github.event_name != 'push'
@@ -66,7 +83,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/data docs/downloads
-          git diff --cached --quiet || git commit -m "Update IDX screener data for ${{ steps.market-date.outputs.date }}"
+          git diff --cached --quiet || git commit -m "Update IDX screener data"
           git push
 
       - name: Configure GitHub Pages

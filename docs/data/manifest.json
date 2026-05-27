@@ -23,6 +23,13 @@
       "workbook": "downloads/2026-05-24.xlsx"
     },
     {
+      "date": "2026-05-22",
+      "runTime": "2026-05-24 19:59:00",
+      "rows": 71,
+      "file": "data/2026-05-22.json",
+      "workbook": "downloads/2026-05-22.xlsx"
+    },
+    {
       "date": "2026-05-13",
       "runTime": "2026-05-24 08:57:36",
       "rows": 51,

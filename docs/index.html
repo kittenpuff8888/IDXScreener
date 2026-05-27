@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>IDX Screener</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260527-dashboard" />
   </head>
   <body>
     <div class="app">
@@ -17,7 +17,8 @@
           </div>
         </div>
         <nav class="nav" role="tablist" aria-label="Dataset">
-          <button class="tab active" data-tab="screener" type="button">Screener</button>
+          <button class="tab active" data-tab="dashboard" type="button">Dashboard</button>
+          <button class="tab" data-tab="screener" type="button">Screener Table</button>
           <button class="tab" data-tab="technical" type="button">Technical Detail</button>
           <button class="tab" data-tab="fundamental" type="button">Fundamental Detail</button>
           <button class="tab" data-tab="processing" type="button">Processing</button>
@@ -57,6 +58,26 @@
 
           <section id="filterBar" class="filterbar" aria-label="Screener filters"></section>
 
+          <section id="dashboardView" class="dashboard-view" aria-label="Dashboard insight cards">
+            <div id="signalCards" class="signal-cards"></div>
+            <div class="dashboard-grid">
+              <section class="insight-panel">
+                <div class="panel-heading">
+                  <h3>Top Setups</h3>
+                  <span>By upside potential</span>
+                </div>
+                <div id="spotlightCards" class="spotlight-cards"></div>
+              </section>
+              <section class="insight-panel">
+                <div class="panel-heading">
+                  <h3>Sector Flow</h3>
+                  <span>Current signal mix</span>
+                </div>
+                <div id="sectorBars" class="sector-bars"></div>
+              </section>
+            </div>
+          </section>
+
           <section class="tablewrap" aria-live="polite">
             <table>
               <thead id="tableHead"></thead>
@@ -68,6 +89,6 @@
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260527-dashboard"></script>
   </body>
 </html>

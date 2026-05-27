@@ -1,11 +1,25 @@
 const state = {
   manifest: null,
   payload: null,
-  tab: "screener",
+  tab: "dashboard",
   filter: "ALL",
   search: "",
   sortKey: null,
   sortDir: 1,
+};
+
+const dashboardColumns = [
+  "Filter", "Ticker", "Sector", "Price", "Chg %", "RVOL", "Zone", "MP Profile",
+  "MA Position", "POI", "Anchor", "Target", "Upside %", "R/R"
+];
+const maxDashboardRows = 80;
+
+const filterLabels = {
+  A: "EMA Trend",
+  B: "Golden Cross",
+  C: "Swing BOS",
+  D: "POI Bounce",
+  E: "EQ Breakout",
 };
 
 const numericNames = new Set([
@@ -24,6 +38,10 @@ const els = {
   metricNoData: document.querySelector("#metricNoData"),
   searchInput: document.querySelector("#searchInput"),
   filterBar: document.querySelector("#filterBar"),
+  dashboardView: document.querySelector("#dashboardView"),
+  signalCards: document.querySelector("#signalCards"),
+  spotlightCards: document.querySelector("#spotlightCards"),
+  sectorBars: document.querySelector("#sectorBars"),
   viewTitle: document.querySelector("#viewTitle"),
   viewMeta: document.querySelector("#viewMeta"),
   tableHead: document.querySelector("#tableHead"),
@@ -48,7 +66,17 @@ function formatValue(key, value) {
   return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function getColumns(tab = state.tab) {
+  if (tab === "dashboard") return dashboardColumns;
   const exported = state.payload?.columns?.[tab];
   if (exported?.length) return exported;
   const rows = state.payload?.[tab] || [];
@@ -62,6 +90,7 @@ function isNumericColumn(key, rows) {
 
 function titleForTab(tab) {
   return {
+    dashboard: "Signal Dashboard",
     screener: "IDX Screener",
     technical: "IDX Technical Detail",
     fundamental: "IDX Fundamental Detail",
@@ -69,11 +98,12 @@ function titleForTab(tab) {
   }[tab] || tab;
 }
 
-function activeRows() {
-  const raw = state.payload?.[state.tab] || [];
+function filteredRows(limitDashboard = true) {
+  const sourceTab = state.tab === "dashboard" ? "screener" : state.tab;
+  const raw = state.payload?.[sourceTab] || [];
   let rows = raw;
 
-  if (state.tab === "screener" && state.filter !== "ALL") {
+  if ((state.tab === "dashboard" || state.tab === "screener") && state.filter !== "ALL") {
     rows = rows.filter((row) => row.Filter === state.filter);
   }
 
@@ -89,9 +119,19 @@ function activeRows() {
       if (typeof av === "number" && typeof bv === "number") return (av - bv) * state.sortDir;
       return String(av ?? "").localeCompare(String(bv ?? "")) * state.sortDir;
     });
+  } else if (state.tab === "dashboard") {
+    rows = [...rows].sort((a, b) => (b["Upside %"] || 0) - (a["Upside %"] || 0));
+  }
+
+  if (state.tab === "dashboard" && limitDashboard) {
+    return rows.slice(0, maxDashboardRows);
   }
 
   return rows;
+}
+
+function activeRows() {
+  return filteredRows(true);
 }
 
 function renderMetrics() {
@@ -103,7 +143,7 @@ function renderMetrics() {
 }
 
 function renderFilterBar() {
-  if (state.tab !== "screener") {
+  if (state.tab !== "dashboard" && state.tab !== "screener") {
     els.filterBar.innerHTML = "";
     return;
   }
@@ -115,16 +155,81 @@ function renderFilterBar() {
   }).join("");
 }
 
+function groupCount(rows, key) {
+  return rows.reduce((acc, row) => {
+    const value = row[key] || "-";
+    acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function renderDashboard(rows) {
+  const allRows = state.payload?.screener || [];
+  const counts = groupCount(allRows, "Filter");
+  const total = allRows.length || 1;
+
+  els.signalCards.innerHTML = ["A", "B", "C", "D", "E"].map((tag) => {
+    const count = counts[tag] || 0;
+    const pct = Math.round((count / total) * 100);
+    return `
+      <button class="signal-card ${state.filter === tag ? "active" : ""}" data-filter="${tag}" type="button">
+        <span>Filter ${tag}</span>
+        <strong>${count}</strong>
+        <small>${filterLabels[tag]} / ${pct}%</small>
+      </button>
+    `;
+  }).join("");
+
+  const topSetups = [...rows]
+    .filter((row) => typeof row["Upside %"] === "number")
+    .sort((a, b) => (b["Upside %"] || 0) - (a["Upside %"] || 0))
+    .slice(0, 4);
+
+  els.spotlightCards.innerHTML = topSetups.length ? topSetups.map((row) => `
+    <article class="setup-card">
+      <div>
+        <strong>${escapeHtml(row.Ticker)}</strong>
+        <span>${escapeHtml(row.Sector)}</span>
+      </div>
+      <dl>
+        <dt>Price</dt><dd>${escapeHtml(formatValue("Price", row.Price))}</dd>
+        <dt>Upside</dt><dd class="positive">${escapeHtml(formatValue("Upside %", row["Upside %"]))}</dd>
+        <dt>R/R</dt><dd>${escapeHtml(formatValue("R/R", row["R/R"]))}</dd>
+      </dl>
+      <p>${escapeHtml(row.Zone || row.POI || "-")}</p>
+    </article>
+  `).join("") : `<div class="muted-box">No setups in the current filter.</div>`;
+
+  const sectorCounts = Object.entries(groupCount(rows, "Sector"))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const maxSector = Math.max(1, ...sectorCounts.map(([, count]) => count));
+
+  els.sectorBars.innerHTML = sectorCounts.length ? sectorCounts.map(([sector, count]) => `
+    <div class="sector-row">
+      <span>${escapeHtml(sector)}</span>
+      <div><i style="width:${Math.max(8, (count / maxSector) * 100)}%"></i></div>
+      <strong>${count}</strong>
+    </div>
+  `).join("") : `<div class="muted-box">No sector data for this filter.</div>`;
+}
+
 function renderTable() {
   const rows = activeRows();
+  const totalRows = filteredRows(false).length;
   const visibleColumns = getColumns();
 
   els.viewTitle.textContent = titleForTab(state.tab);
-  els.viewMeta.textContent = `${rows.length.toLocaleString("en-US")} rows / ${visibleColumns.length.toLocaleString("en-US")} columns`;
+  const rowText = state.tab === "dashboard"
+    ? `Top ${rows.length.toLocaleString("en-US")} of ${totalRows.toLocaleString("en-US")} setups`
+    : `${rows.length.toLocaleString("en-US")} rows`;
+  els.viewMeta.textContent = `${rowText} / ${visibleColumns.length.toLocaleString("en-US")} columns`;
+  els.dashboardView.toggleAttribute("hidden", state.tab !== "dashboard");
+  if (state.tab === "dashboard") renderDashboard(rows);
 
   els.tableHead.innerHTML = `<tr>${visibleColumns.map((key) => {
     const mark = state.sortKey === key ? (state.sortDir === 1 ? " ^" : " v") : "";
-    return `<th class="sortable" data-sort="${key}">${key}${mark}</th>`;
+    return `<th class="sortable" data-sort="${escapeHtml(key)}">${escapeHtml(key)}${mark}</th>`;
   }).join("")}</tr>`;
 
   els.tableBody.innerHTML = rows.map((row) => `<tr>${visibleColumns.map((key) => {
@@ -136,7 +241,7 @@ function renderTable() {
       numeric && Number(value) > 0 && key.includes("%") ? "positive" : "",
       numeric && Number(value) < 0 && key.includes("%") ? "negative" : "",
     ].filter(Boolean).join(" ");
-    return `<td class="${classes}">${formatValue(key, value)}</td>`;
+    return `<td class="${classes}">${escapeHtml(formatValue(key, value))}</td>`;
   }).join("")}</tr>`).join("");
 
   els.emptyState.toggleAttribute("hidden", rows.length > 0);
@@ -195,6 +300,12 @@ els.searchInput.addEventListener("input", (event) => {
   renderTable();
 });
 els.filterBar.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-filter]");
+  if (!button) return;
+  state.filter = button.dataset.filter;
+  render();
+});
+els.dashboardView.addEventListener("click", (event) => {
   const button = event.target.closest("[data-filter]");
   if (!button) return;
   state.filter = button.dataset.filter;

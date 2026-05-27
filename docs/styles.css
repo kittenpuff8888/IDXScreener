@@ -219,6 +219,181 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.dashboard-view {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfdfc;
+}
+
+.dashboard-view[hidden] {
+  display: none;
+}
+
+.signal-cards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.signal-card {
+  display: grid;
+  justify-items: start;
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(19, 36, 54, 0.04);
+}
+
+.signal-card span,
+.signal-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.signal-card strong {
+  margin: 6px 0;
+  font-size: 28px;
+}
+
+.signal-card.active {
+  border-color: var(--teal);
+  background: #ecfbf7;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  gap: 10px;
+}
+
+.insight-panel {
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.panel-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.panel-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spotlight-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.setup-card {
+  padding: 12px;
+  border: 1px solid #eaf0f2;
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.setup-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.setup-card div strong {
+  color: var(--teal);
+  font-size: 16px;
+}
+
+.setup-card div span,
+.setup-card p,
+.muted-box {
+  color: var(--muted);
+}
+
+.setup-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.setup-card dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.setup-card dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+
+.setup-card p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.sector-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.sector-row {
+  display: grid;
+  grid-template-columns: 110px minmax(120px, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.sector-row span {
+  overflow: hidden;
+  color: #475467;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sector-row div {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef3f5;
+}
+
+.sector-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--teal);
+}
+
+.sector-row strong {
+  text-align: right;
+}
+
+.muted-box {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
 .tab,
 .chip {
   border-color: transparent;
@@ -292,6 +467,23 @@ td {
   white-space: nowrap;
 }
 
+thead th:first-child,
+tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+thead th:first-child {
+  z-index: 3;
+  background: #edf5f3;
+}
+
+tbody td:first-child {
+  background: #fff;
+}
+
 th.sortable {
   cursor: pointer;
 }
@@ -343,6 +535,12 @@ td.numeric {
 
   .nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .signal-cards,
+  .dashboard-grid,
+  .spotlight-cards {
+    grid-template-columns: 1fr;
   }
 
   .shell {

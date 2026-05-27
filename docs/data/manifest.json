@@ -3,17 +3,24 @@
   "dates": [
     {
       "date": "2026-05-27",
-      "runTime": "2026-05-26 18:55:42",
+      "runTime": "2026-05-27 16:08:23",
       "rows": 860,
       "file": "data/2026-05-27.json",
       "workbook": "downloads/2026-05-27.xlsx"
     },
     {
       "date": "2026-05-26",
-      "runTime": "2026-05-25 17:32:39",
-      "rows": 932,
+      "runTime": "2026-05-27 15:44:26",
+      "rows": 860,
       "file": "data/2026-05-26.json",
       "workbook": "downloads/2026-05-26.xlsx"
+    },
+    {
+      "date": "2026-05-25",
+      "runTime": "2026-05-27 15:19:47",
+      "rows": 963,
+      "file": "data/2026-05-25.json",
+      "workbook": "downloads/2026-05-25.xlsx"
     },
     {
       "date": "2026-05-24",
@@ -24,10 +31,31 @@
     },
     {
       "date": "2026-05-22",
-      "runTime": "2026-05-24 19:59:00",
-      "rows": 71,
+      "runTime": "2026-05-27 14:53:27",
+      "rows": 932,
       "file": "data/2026-05-22.json",
       "workbook": "downloads/2026-05-22.xlsx"
+    },
+    {
+      "date": "2026-05-21",
+      "runTime": "2026-05-27 14:27:06",
+      "rows": 726,
+      "file": "data/2026-05-21.json",
+      "workbook": "downloads/2026-05-21.xlsx"
+    },
+    {
+      "date": "2026-05-20",
+      "runTime": "2026-05-27 13:59:59",
+      "rows": 887,
+      "file": "data/2026-05-20.json",
+      "workbook": "downloads/2026-05-20.xlsx"
+    },
+    {
+      "date": "2026-05-19",
+      "runTime": "2026-05-27 13:32:24",
+      "rows": 835,
+      "file": "data/2026-05-19.json",
+      "workbook": "downloads/2026-05-19.xlsx"
     },
     {
       "date": "2026-05-13",
